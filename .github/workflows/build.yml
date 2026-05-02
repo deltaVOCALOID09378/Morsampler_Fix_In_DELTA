@@ -1,4 +1,7 @@
-name: PR Build
+# Made And Checked By DELTA SYNTH & Gemini AI | deltaVOCALOID09378
+# Version: 1.0
+
+name: โครงสร้างการบิลด์อัตโนมัติ (PR Build)
 
 on:
   push:
@@ -11,7 +14,7 @@ permissions:
 
 jobs:
   build:
-    name: Build on ${{ matrix.os }} (${{ matrix.arch }})
+    name: บิลด์บนระบบ ${{ matrix.os }} สถาปัตยกรรม (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
 
     strategy:
@@ -31,29 +34,29 @@ jobs:
             runner: windows-latest
           - os: macos
             arch: x64
-            runner: macos-latest
+            runner: macos-13 # อัปเดต: ระบุเวอร์ชัน 13 เพื่อรับรองสถาปัตยกรรม Intel (x64) อย่างเสถียร
           - os: macos
             arch: arm64
-            runner: macos-latest
+            runner: macos-14 # อัปเดต: ระบุเวอร์ชัน 14 เพื่อรับรองสถาปัตยกรรม Apple Silicon (arm64) อย่างเสถียร
 
     steps:
-    - name: Checkout source
-      uses: actions/checkout@v3
+    - name: ดึงข้อมูลซอร์สโค้ด (Checkout source)
+      uses: actions/checkout@v4 # อัปเดต: ใช้เวอร์ชันล่าสุด (v4) เพื่อประสิทธิภาพที่สูงขึ้น
 
-    - name: Set up CMake
-      uses: jwlawson/actions-setup-cmake@v1.12
+    - name: ติดตั้งและตั้งค่าสภาพแวดล้อม CMake (Set up CMake)
+      uses: jwlawson/actions-setup-cmake@v2.0.2 # อัปเดต: ใช้เวอร์ชันใหม่เพื่อรองรับการทำงานที่ดียิ่งขึ้น
 
-    - name: Configure CMake
+    - name: กำหนดค่าการคอมไพล์ CMake (Configure CMake)
       run: >
         cmake -B build -DCMAKE_BUILD_TYPE=Release
         ${{ matrix.os == 'windows' && matrix.arch == 'arm64' && '-A ARM64' || '' }}
         ${{ matrix.os == 'windows' && matrix.arch == 'x64' && '-A x64' || '' }}
         ${{ matrix.os != 'windows' && matrix.arch == 'arm64' && '-DCMAKE_OSX_ARCHITECTURES=arm64' || '' }}
 
-    - name: Build
+    - name: เริ่มกระบวนการสร้างและรวบรวมไฟล์ (Build)
       run: cmake --build build --config Release
 
-    - name: Package binary (Windows)
+    - name: จัดเตรียมและบีบอัดไฟล์โปรแกรมสำหรับระบบปฏิบัติการ Windows
       if: matrix.os == 'windows'
       shell: pwsh
       run: |
@@ -62,7 +65,7 @@ jobs:
         cd output
         Compress-Archive -Path moresampler2.exe -DestinationPath moresampler2-${{ matrix.os }}-${{ matrix.arch }}.zip
 
-    - name: Package binary (Non-Windows)
+    - name: จัดเตรียมและบีบอัดไฟล์โปรแกรมสำหรับระบบปฏิบัติการอื่นๆ (Linux / macOS)
       if: matrix.os != 'windows'
       shell: bash
       run: |
@@ -71,11 +74,11 @@ jobs:
         cd output
         zip moresampler2-${{ matrix.os }}-${{ matrix.arch }}.zip moresampler2
 
-    - name: Upload to GitHub Release
-      uses: softprops/action-gh-release@v1
+    - name: อัปโหลดผลลัพธ์ไปยังส่วนการเผยแพร่ของ GitHub (Upload to GitHub Release)
+      uses: softprops/action-gh-release@v2 # อัปเดต: ใช้เวอร์ชันล่าสุด (v2)
       with:
         tag_name: auto-${{ github.run_id }}  
-        name: Auto Build ${{ github.run_id }}
+        name: เวอร์ชันบิลด์อัตโนมัติ ${{ github.run_id }}
         draft: false
         prerelease: true
         files: output/moresampler2-${{ matrix.os }}-${{ matrix.arch }}.zip
