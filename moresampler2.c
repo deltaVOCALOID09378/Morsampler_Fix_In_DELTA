@@ -1,3 +1,6 @@
+// Made And Checked By DELTA SYNTH & Gemini AI | deltaVOCALOID09378, Kanru Hua & llsm developers
+// Version: 0.3.0
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,9 +11,9 @@
 #include <libllsm/llsm.h>
 #include <libpyin/pyin.h>
 
-const char* version = "0.2.6";
+const char* version = "0.3.0";
 
-// circular interpolation of two radian values
+// การประมาณค่าในช่วงแบบวงกลมสำหรับค่าเรเดียนสองค่า (Circular Interpolation)
 static FP_TYPE linterpc(FP_TYPE a, FP_TYPE b, FP_TYPE ratio) {
   FP_TYPE ax = cos_2(a);
   FP_TYPE ay = sin_2(a);
@@ -21,6 +24,7 @@ static FP_TYPE linterpc(FP_TYPE a, FP_TYPE b, FP_TYPE ratio) {
   return atan2(cy, cx);
 }
 
+// การประมาณค่าเฟรมสเปกตรัมของเสียง (Noise/Magnitude Frame Interpolation)
 static void interp_nmframe(llsm_nmframe* dst, llsm_nmframe* src,
   FP_TYPE ratio, int dst_voiced, int src_voiced) {
   for(int i = 0; i < dst -> npsd; i ++)
@@ -52,6 +56,7 @@ static void interp_nmframe(llsm_nmframe* dst, llsm_nmframe* src,
   }
 }
 
+// บันทึกการตั้งค่าลงไฟล์
 int write_conf(FILE* f, llsm_aoptions* conf) {
     fwrite(&conf->thop, sizeof(FP_TYPE), 1, f);
     fwrite(&conf->maxnhar, sizeof(int), 1, f);
@@ -68,6 +73,7 @@ int write_conf(FILE* f, llsm_aoptions* conf) {
     return 0;
 }
 
+// อ่านการตั้งค่าจากไฟล์
 int read_conf(FILE* f, llsm_aoptions* opt) {
     fread(&opt->thop, sizeof(FP_TYPE), 1, f);
     fread(&opt->maxnhar, sizeof(int), 1, f);
@@ -86,39 +92,40 @@ int read_conf(FILE* f, llsm_aoptions* opt) {
     return 0;
 }
 
+// บันทึกข้อมูล LLSM ลงแคชไฟล์เพื่อลดเวลาการประมวลผลซ้ำ
 int save_llsm(llsm_chunk* chunk, const char* filename, llsm_aoptions* conf, int* fs, int* nbit) {
   FILE* f = fopen(filename, "wb");
   if (!f) return -1;
 
-  // Header
+  // ส่วนหัวไฟล์ (Header)
   fwrite("LLSM2", 1, 5, f);
   int version = 1;
   fwrite(&version, sizeof(int), 1, f);
 
-  // Frame count
+  // จำนวนเฟรม
   int* nfrm = llsm_container_get(chunk->conf, LLSM_CONF_NFRM);
   fwrite(nfrm, sizeof(int), 1, f);
   fwrite(fs, sizeof(int), 1, f);
   fwrite(nbit, sizeof(int), 1, f);
 
-  // Write chunk->conf
+  // บันทึกค่าการตั้งค่า
   write_conf(f, conf);
 
-  // Frame data
+  // ข้อมูลเฟรมเสียง
   for (int i = 0; i < *nfrm; ++i) {
     llsm_container* frame = chunk->frames[i];
 
-    // f0
+    // ความถี่พื้นฐาน (F0)
     FP_TYPE* f0 = llsm_container_get(frame, LLSM_FRAME_F0);
     fwrite(f0, sizeof(FP_TYPE), 1, f);
 
-    // HM Frame
+    // เฟรมฮาร์มอนิก (HM Frame)
     llsm_hmframe* hm = llsm_container_get(frame, LLSM_FRAME_HM);
     fwrite(&hm->nhar, sizeof(int), 1, f);
     fwrite(hm->ampl, sizeof(FP_TYPE), hm->nhar, f);
     fwrite(hm->phse, sizeof(FP_TYPE), hm->nhar, f);
 
-    // NM Frame
+    // เฟรมสเปกตรัม (NM Frame)
     llsm_nmframe* nm = llsm_container_get(frame, LLSM_FRAME_NM);
     fwrite(&nm->npsd, sizeof(int), 1, f);
     fwrite(nm->psd, sizeof(FP_TYPE), nm->npsd, f);
@@ -138,6 +145,7 @@ int save_llsm(llsm_chunk* chunk, const char* filename, llsm_aoptions* conf, int*
   return 0;
 }
 
+// อ่านข้อมูล LLSM จากแคชไฟล์
 llsm_chunk* read_llsm(const char* filename, int* nfrm, int* fs, int* nbit) {
   FILE* f = fopen(filename, "rb");
   if (!f) return NULL;
@@ -152,7 +160,8 @@ llsm_chunk* read_llsm(const char* filename, int* nfrm, int* fs, int* nbit) {
   fread(nfrm, sizeof(int), 1, f);
   fread(fs, sizeof(int), 1, f);
   fread(nbit, sizeof(int), 1, f);
-  // Read conf
+  
+  // อ่านการตั้งค่า
   llsm_aoptions* aopt = llsm_create_aoptions();
   int conf_r = read_conf(f, aopt);
   if (conf_r != 0) {
@@ -165,16 +174,15 @@ llsm_chunk* read_llsm(const char* filename, int* nfrm, int* fs, int* nbit) {
     llsm_create_int(*nfrm), llsm_delete_int, llsm_copy_int);
   llsm_chunk* chunk = llsm_create_chunk(conf, *nfrm);
   
-
   for (int i = 0; i < *nfrm; ++i) {
-    llsm_container* frame = llsm_create_frame(0, 0, 0, 0); // dummy init
+    llsm_container* frame = llsm_create_frame(0, 0, 0, 0); // โครงสร้างจำลอง
 
-    // f0
+    // ความถี่พื้นฐาน (F0)
     FP_TYPE* f0 = malloc(sizeof(FP_TYPE));
     fread(f0, sizeof(FP_TYPE), 1, f);
     llsm_container_attach(frame, LLSM_FRAME_F0, f0, free, llsm_copy_fp);
 
-    // HM
+    // ฮาร์มอนิก (HM)
     int nhar;
     fread(&nhar, sizeof(int), 1, f);
     llsm_hmframe* hm = llsm_create_hmframe(nhar);
@@ -182,7 +190,7 @@ llsm_chunk* read_llsm(const char* filename, int* nfrm, int* fs, int* nbit) {
     fread(hm->phse, sizeof(FP_TYPE), nhar, f);
     llsm_container_attach(frame, LLSM_FRAME_HM, hm, llsm_delete_hmframe, llsm_copy_hmframe);
 
-    // NM
+    // สเปกตรัม (NM)
     llsm_nmframe* nm = malloc(sizeof(llsm_nmframe));
     fread(&nm->npsd, sizeof(int), 1, f);
     nm->psd = malloc(sizeof(FP_TYPE) * nm->npsd);
@@ -213,7 +221,7 @@ llsm_chunk* read_llsm(const char* filename, int* nfrm, int* fs, int* nbit) {
 #define LOG2DB (20.0 / 2.3025851)
 #define mag2db(x) (log_2(x) * LOG2DB)
 
-// dst <- (dst &> src)
+// ผสานเฟรม LLSM (dst <- (dst &> src))
 static void interp_llsm_frame(llsm_container* dst, llsm_container* src,
   FP_TYPE ratio) {
 # define EPS 1e-8
@@ -228,7 +236,7 @@ static void interp_llsm_frame(llsm_container* dst, llsm_container* src,
   FP_TYPE* dst_vtmagn = llsm_container_get(dst, LLSM_FRAME_VTMAGN);
   FP_TYPE* src_vtmagn = llsm_container_get(src, LLSM_FRAME_VTMAGN);
 
-  // always take the frequency of the voiced frame
+  // ดึงความถี่ของเฟรมที่มีการออกเสียงเสมอ
   llsm_container* voiced = dst_f0 <= 0 && src_f0 <= 0 ? NULL :
     (src_f0 > 0 ? src : dst);
   int bothvoiced = dst_f0 > 0 && src_f0 > 0;
@@ -294,9 +302,10 @@ static void interp_llsm_frame(llsm_container* dst, llsm_container* src,
 # undef EPS
 }
 
+// การถอดรหัส Base64 สำหรับค่าระดับเสียงของ UTAU
 int base64decoderForUtau(char x, char y)
 {
-	int ans1, ans2, ans;
+	int ans1 = 0, ans2 = 0, ans;
 
 	if(x=='+') ans1 = 62;
 	if(x=='/') ans1 = 63;
@@ -315,6 +324,7 @@ int base64decoderForUtau(char x, char y)
 	return ans;
 }
 
+// การอ่านเส้นกราฟระดับเสียง (Pitch Contour)
 int getF0Contour(char *input, double *output)
 {
 	int i, j, count, length;
@@ -322,7 +332,6 @@ int getF0Contour(char *input, double *output)
 	count = 0;
 	double tmp;
     
-
 	tmp = 0.0;
 	while(input[i] != '\0')
 	{
@@ -350,7 +359,7 @@ int getF0Contour(char *input, double *output)
 	return count;
 }
 
-//飴屋／菖蒲氏のworld4utau.cppから移植
+// ค่าเฉลี่ยความถี่ (พอร์ตโค้ดมาจาก world4utau.cpp โดย 飴屋／菖蒲氏)
 double getFreqAvg(double f0[], int tLen)
 {
 	int i, j;
@@ -364,7 +373,7 @@ double getFreqAvg(double f0[], int tLen)
 		if (value < 1000.0 && value > 55.0)
 		{
 			r = 1.0;
-			//連続して近い値の場合のウエイトを重くする
+			// ให้น้ำหนักกับค่าที่ใกล้เคียงกันต่อเนื่อง
 			for (j = 0; j <= 5; j++)
 			{
 				if (i > j) {
@@ -383,8 +392,8 @@ double getFreqAvg(double f0[], int tLen)
 	return freq_avg;
 }
 
+// การแปลงชื่อตัวโน้ตเป็นค่า MIDI
 static int parse_note_to_midi(const char *note_str) {
-    // Semitone offsets from C
     int base_note = -1;
     switch (toupper(note_str[0])) {
         case 'C': base_note = 0; break;
@@ -394,7 +403,7 @@ static int parse_note_to_midi(const char *note_str) {
         case 'G': base_note = 7; break;
         case 'A': base_note = 9; break;
         case 'B': base_note = 11; break;
-        default: return -1;  // invalid note
+        default: return -1;  // โน้ตไม่ถูกต้อง
     }
 
     int offset = 1;
@@ -411,20 +420,22 @@ static int parse_note_to_midi(const char *note_str) {
     return midi_note;
 }
 
+// การแปลงชื่อตัวโน้ตเป็นค่าความถี่ (Hz)
 float note_to_frequency(const char *note_str) {
     int midi = parse_note_to_midi(note_str);
-    if (midi < 0) return -1.0f;  // invalid input
+    if (midi < 0) return -1.0f;  // ค่าอินพุตไม่ถูกต้อง
     return (float)(440.0 * pow(2.0, (midi - 69) / 12.0));
 }
 
+// การแปลงค่า Cents เป็น Hz Offset
 void convert_cents_to_hz_offset(const double* cents, int cents_len,
                                 int nfrm, int nhop, int fs, float tempo,
                                 float* out_ratio_offset) {
 
     const float frame_duration_sec = (float)nhop / (float)fs;
 
-    // PIT grid interval from world4utau: pStep samples per PIT point
-    const float pit_interval_sec = (60.0f / 96.0f) / tempo;  // seconds per PIT element
+    // ช่วง PIT grid จาก world4utau (วินาทีต่อส่วน PIT)
+    const float pit_interval_sec = (60.0f / 96.0f) / tempo;  
 
     for (int i = 0; i < nfrm; ++i) {
         float time_sec = i * frame_duration_sec;
@@ -443,26 +454,27 @@ void convert_cents_to_hz_offset(const double* cents, int cents_len,
         float cents_interp = (float)(cents[i0] * (1.0f - frac) + cents[i1] * frac);
 
         float ratio = powf(2.0f, cents_interp / 1200.0f);
-        out_ratio_offset[i] = ratio - 1.0f; // ratio offset, not Hz
+        out_ratio_offset[i] = ratio - 1.0f; // คืนค่าเป็นอัตราส่วนชดเชย (ไม่ได้เป็นหน่วย Hz โดยตรง)
     }
 }
 
 FP_TYPE* convert_env_to_vol_arr(int* p, int* v, int nfrm) {
-    return NULL; // TODO
+    return NULL; // TODO: สำหรับการพัฒนาในอนาคต
 }
 
+// การปรับความเร็วของช่วงพยัญชนะต้น (Consonant Velocity)
 void apply_velocity(llsm_chunk* chunk, float velocity, int* consonant_frames, int total_frames) {
     int consonant_frames_old = *consonant_frames;
 
     if (total_frames <= consonant_frames_old + 1) {
-        printf("main_resampler: error applying velocity, no velocity applied.\n");
+        printf("[ระบบ] ข้อผิดพลาดในการปรับ Velocity ไม่สามารถดำเนินการได้เนื่องจากจำนวนเฟรมน้อยเกินไป\n");
         return;
     }
         
     int consonant_frames_new =
         (int)(consonant_frames_old * velocity + 0.5f);
 
-    // clamp a bit just in case
+    // ป้องกันค่าหลุดกรอบ
     if (consonant_frames_new < 1) {
         consonant_frames_new = 1;
     }
@@ -472,9 +484,8 @@ void apply_velocity(llsm_chunk* chunk, float velocity, int* consonant_frames, in
 
     *consonant_frames = consonant_frames_new;
 
-    // temp chunk with resampled consonants
+    // สร้างข้อมูลจำลองสำหรับส่วนของพยัญชนะต้นที่มีการ Resample
     llsm_chunk* tmp = llsm_create_chunk(chunk->conf, consonant_frames_new);
-
     
     for (int i = 0; i < consonant_frames_new; i++) {
         FP_TYPE mapped =
@@ -498,14 +509,14 @@ void apply_velocity(llsm_chunk* chunk, float velocity, int* consonant_frames, in
         }
     }
 
-    // copy temp consonants back into chunk (deep copy)
+    // คัดลอกข้อมูลพยัญชนะต้นที่ปรับปรุงแล้วกลับสู่โครงสร้างหลัก (Deep Copy)
     for (int i = 0; i < consonant_frames_new; i++) {
         if (chunk->frames[i])
             llsm_delete_container(chunk->frames[i]);
         chunk->frames[i] = llsm_copy_container(tmp->frames[i]);
     }
 
-    // --- vowel region inside the *sample* ---
+    // --- ส่วนของสระ (Vowel) ภายในตัวอย่างเสียง ---
     int vowel_frames_old = total_frames - consonant_frames_old;
     int vowel_frames_new = total_frames - consonant_frames_new;
 
@@ -526,7 +537,7 @@ void apply_velocity(llsm_chunk* chunk, float velocity, int* consonant_frames, in
         chunk->frames[dst_idx] = new_frame;
     }
 
-    // clean tail *within the sample region*
+    // ล้างข้อมูลส่วนหาง (Tail) ที่เหลือทิ้ง
     for (int i = consonant_frames_new + vowel_frames_new;
          i < total_frames;
          i++) {
@@ -539,40 +550,37 @@ void apply_velocity(llsm_chunk* chunk, float velocity, int* consonant_frames, in
     llsm_delete_chunk(tmp);
 }
 
-// according to my research on the tension parameter in Synthesizer V,
-// as tension increases, the higher harmonics are amplified
-// and as tension decreases, they are attenuated.
+// การปรับค่าความตึงเครียดของเสียง (Tension Parameter)
+// ยิ่งความตึงเครียดสูง เสียงในย่านฮาร์มอนิกความถี่สูงจะถูกขยายให้ชัดเจนขึ้น
 void apply_tension(llsm_chunk* chunk, FP_TYPE tension) {
     int* nfrm_p = llsm_container_get(chunk->conf, LLSM_CONF_NFRM);
     if (!nfrm_p) return;
 
-    // Map [-100,100] -> [-1,1]
+    // ทำแผนที่ช่วงค่า [-100,100] -> [-1,1]
     const FP_TYPE t = tension / (FP_TYPE)100.0;
 
-    // Global strength of spectral tilt in dB (±)
-    const FP_TYPE slope_db = (FP_TYPE)32.0 * t;   // try 14–20 to taste
+    // ความแรงของการเอียงสเปกตรัมโดยรวม (ในหน่วย dB)
+    const FP_TYPE slope_db = (FP_TYPE)32.0 * t;
 
-    // Shape params: pivot ~ where tilt crosses 0; alpha controls knee sharpness
-    const FP_TYPE pivot = (FP_TYPE)0.25;          // 0..1 (slightly below mid so mids participate)
-    const FP_TYPE alpha = (FP_TYPE)2.6;           // 1.6–2.8 soft→hard knee
+    // พารามิเตอร์กำหนดรูปทรง
+    const FP_TYPE pivot = (FP_TYPE)0.25;          // จุดกึ่งกลาง
+    const FP_TYPE alpha = (FP_TYPE)2.6;           // ความโค้งงอ
     const FP_TYPE eps   = (FP_TYPE)1e-12;
 
     for (int i = 0; i < *nfrm_p; ++i) {
         llsm_hmframe* hm = llsm_container_get(chunk->frames[i], LLSM_FRAME_HM);
         if (!hm || !hm->ampl || hm->nhar <= 0) continue;
 
-        // optional: measure pre-tilt energy to normalize later
+        // ประเมินพลังงานเริ่มต้น (Pre-tilt energy) เพื่อปรับสมดุล
         FP_TYPE sum0 = 0;
         for (int j = 0; j < hm->nhar; ++j) sum0 += hm->ampl[j];
 
         for (int j = 0; j < hm->nhar; ++j) {
-            // 0..1 index low→high, eased so top doesn’t dominate
             FP_TYPE w = (hm->nhar > 1) ? (FP_TYPE)j / (FP_TYPE)(hm->nhar - 1) : 0;
-            FP_TYPE w_eased = (FP_TYPE)0.5 - (FP_TYPE)0.5 * (FP_TYPE)cos(M_PI * w); // cosine ease
+            FP_TYPE w_eased = (FP_TYPE)0.5 - (FP_TYPE)0.5 * (FP_TYPE)cos(M_PI * w); // Cosine ease
 
-            // Soft pivoted tilt in dB
-            FP_TYPE h = (FP_TYPE)tanh(alpha * (w_eased - pivot));   // ~[-1,1] with soft knee
-            FP_TYPE g_db = slope_db * h;                             // positive: boost highs, cut lows
+            FP_TYPE h = (FP_TYPE)tanh(alpha * (w_eased - pivot));   
+            FP_TYPE g_db = slope_db * h;                             
             FP_TYPE a = hm->ampl[j];
             FP_TYPE adb = (FP_TYPE)20.0 * (FP_TYPE)log10(a + eps);
             adb += g_db;
@@ -583,12 +591,11 @@ void apply_tension(llsm_chunk* chunk, FP_TYPE tension) {
             hm->ampl[j] = anew;
         }
 
-        // Optional energy preservation keeps loudness comparable and reveals spectral shape
-        // Comment this block out if you WANT overall loudness to change with tension.
+        // คงระดับความดังรวมเอาไว้ให้เทียบเท่ากับของเดิม (Energy Preservation)
         FP_TYPE sum1 = 0;
         for (int j = 0; j < hm->nhar; ++j) sum1 += hm->ampl[j];
         if (sum0 > 0 && sum1 > 0) {
-            FP_TYPE k = sum0 / sum1;                 // rescale to original total linear amplitude
+            FP_TYPE k = sum0 / sum1;                 
             for (int j = 0; j < hm->nhar; ++j) {
                 FP_TYPE v = hm->ampl[j] * k;
                 hm->ampl[j] = v > 1.0 ? 1.0 : v;
@@ -597,21 +604,7 @@ void apply_tension(llsm_chunk* chunk, FP_TYPE tension) {
     }
 }
 
-
-/*void apply_gender(llsm_chunk* chunk, int gender) {
-  int* total_frames = llsm_container_get(chunk->conf, LLSM_CONF_NFRM);
-  for (int i = 0; i < *total_frames; ++i) {
-      llsm_hmframe* hm = llsm_container_get(chunk->frames[i], LLSM_FRAME_HM);
-      if (!hm) continue;
-
-      int nspec = llsm_fparray_length(hm);
-      for (int j = 0; j < nspec; ++j) {
-          hm[j] *= (gender == 1) ? 1.1f : 0.9f;
-      }
-  }
-  return;
-}*/
-
+// ฟังก์ชันดึงค่าระดับเสียงจากพื้นที่ที่กำหนด
 FP_TYPE* get_pitch_from_area(llsm_chunk* chunk, int start, int end) {
   int* nfrm_p = llsm_container_get(chunk->conf, LLSM_CONF_NFRM);
   if (!nfrm_p) return NULL;
@@ -627,6 +620,7 @@ FP_TYPE* get_pitch_from_area(llsm_chunk* chunk, int start, int end) {
   return pitch;
 }
 
+// การแทรกค่าระดับเสียงให้เข้ากัน (Pitch Interpolation)
 FP_TYPE* interp_pitch_to_pitd(FP_TYPE* pitch, int old_nfrm, int new_nfrm) {
   FP_TYPE* new_pitch = malloc(sizeof(FP_TYPE) * new_nfrm);
   if (!new_pitch) return NULL;
@@ -639,7 +633,7 @@ FP_TYPE* interp_pitch_to_pitd(FP_TYPE* pitch, int old_nfrm, int new_nfrm) {
     new_pitch[i] = pitch[idx0] * (1.0f - frac) + pitch[idx1] * frac;
   }
   
-  // Get median ignoring 0 values
+  // หาค่ามัธยฐานโดยละเว้นค่า 0
   FP_TYPE* nonzero = malloc(sizeof(FP_TYPE) * new_nfrm);
   int nz_count = 0;
   for (int i = 0; i < new_nfrm; ++i) {
@@ -649,7 +643,6 @@ FP_TYPE* interp_pitch_to_pitd(FP_TYPE* pitch, int old_nfrm, int new_nfrm) {
   }
 
   FP_TYPE average = (nz_count > 0) ? nonzero[nz_count / 2] : 0.0f;
-
   free(nonzero);
 
   for (int i = 0; i < new_nfrm; ++i) {
@@ -658,7 +651,8 @@ FP_TYPE* interp_pitch_to_pitd(FP_TYPE* pitch, int old_nfrm, int new_nfrm) {
 
   return new_pitch;
 }
-//modulation of original sample's pitch contour
+
+// การปรับการสั่นของระดับเสียง (Modulation) ตามค่าดั้งเดิม
 FP_TYPE* apply_modulation(FP_TYPE* pitch, int mod, int nfrm) {
   FP_TYPE* modulated_pitch = malloc(sizeof(FP_TYPE) * nfrm);
   if (!modulated_pitch) return NULL;
@@ -669,32 +663,33 @@ FP_TYPE* apply_modulation(FP_TYPE* pitch, int mod, int nfrm) {
   return modulated_pitch;
 }
 
+// โครงสร้างรับค่าสถานะคำสั่งพิเศษ
 typedef struct {
     int Mt;
     int t;
     int P;
     int g;
-    int e; // this flag is unused, kept as an example
+    int e;
 } Flags;
 
 int clamp(int val, int min, int max) {
     return val < min ? min : (val > max ? max : val);
 }
 
+// ประมวลผลสตริงการตั้งค่าคำสั่ง (Flag String Parsing)
 void parse_flag_string(const char* str, Flags* flags_out) {
     int i = 0;
-    flags_out->Mt = 0; // default values
+    flags_out->Mt = 0; 
     flags_out->t = 0;
     flags_out->P = 0;
     flags_out->g = 0;
-    flags_out->e = 0; // default to false
+    flags_out->e = 0; 
 
     while (str[i] != '\0') {
         if (strncmp(&str[i], "Mt", 2) == 0) {
             i += 2;
-            flags_out->Mt = strtol(&str[i], (char**)&str, 10); // str gets advanced
+            flags_out->Mt = strtol(&str[i], (char**)&str, 10); 
             flags_out->Mt = clamp(flags_out->Mt, -100, 100);
-            
             continue;
         } else if (str[i] == 't') {
             i++;
@@ -709,19 +704,18 @@ void parse_flag_string(const char* str, Flags* flags_out) {
         } else if (str[i] == 'g') {
             i++;
             flags_out->g = strtol(&str[i], (char**)&str, 10);
-            flags_out->g = clamp(flags_out->g, -100, 100); // example clamp
+            flags_out->g = clamp(flags_out->g, -100, 100); 
             continue;
         } else if (str[i] == 'e') {
             i++;
-            flags_out->e = 1; // toggle flag
+            flags_out->e = 1; 
             continue;
         }
-
-        // Skip unknown characters to avoid infinite loop
         i++;
     }
 }
 
+// ปรับระดับคลื่นเสียงให้สม่ำเสมอตามเป้าหมาย (Waveform Normalization)
 void normalize_waveform(FP_TYPE *waveform, int length, FP_TYPE target_peak,
                         int P_flag) {
   if (P_flag <= 0)
@@ -735,7 +729,7 @@ void normalize_waveform(FP_TYPE *waveform, int length, FP_TYPE target_peak,
   }
 
   if (peak < 1e-9f)
-    return; // avoid divide-by-zero
+    return; 
 
   FP_TYPE full_scale = target_peak / peak;
   FP_TYPE blend = P_flag / 100.0f;
@@ -747,29 +741,30 @@ void normalize_waveform(FP_TYPE *waveform, int length, FP_TYPE target_peak,
 
 int parse_tempo(const char *tempo_str) {
     if (tempo_str[0] == '!') {
-        tempo_str++;  // skip the '!'
+        tempo_str++;  
     }
     return atoi(tempo_str);
 }
 
 typedef struct {
-    char* input;  // Path to the input audio file
-    char* output; // Path to the output audio file
-    float tone; // Musical pitch of the note to be resampled, in hertz
-    float velocity; // velocity of the consontant area
-    char* flags; // raw string of resampler flags
-    float offset; // offset in milliseconds
-    float length; // length of the note in milliseconds
-    float consonant; // length of the consonant area in milliseconds
-    float cutoff; // cutoff frequency in hertz
-    int volume; // volume of the note, 0-100
-    int modulation; // modulation value, 0-100
-    int tempo; // tempo in beats per minute
-    char* pitch_curve; // pitch curve data
+    char* input;  
+    char* output; 
+    float tone; 
+    float velocity; 
+    char* flags; 
+    float offset; 
+    float length; 
+    float consonant; 
+    float cutoff; 
+    int volume; 
+    int modulation; 
+    int tempo; 
+    char* pitch_curve; 
 } resampler_data;
 
+// ฟังก์ชันหลักในการปรับแต่งและสังเคราะห์เสียง (Resampling System)
 int resample(resampler_data* data) {
-  // Allocate and load pitch curve
+  // สร้างและโหลดเส้นระดับเสียง
   double* f0_curve = malloc(sizeof(double) * 3000);
   if (!f0_curve) return 1;
   int pit_len = getF0Contour(data->pitch_curve, f0_curve);
@@ -779,12 +774,16 @@ int resample(resampler_data* data) {
   Flags flags;
   parse_flag_string(data->flags, &flags);
 
-  // Build expected .llsm2 path from input WAV path
-  char llsm_path[256]; //TODO: instead of fixed size, dynamically allocate based on length
-  snprintf(llsm_path, sizeof(llsm_path), "%s", data->input);
+  // เตรียมเส้นทางไฟล์ .llsm2 โดยใช้ Dynamic Allocation ป้องกัน Buffer Overflow
+  size_t path_len = strlen(data->input) + 10;
+  char* llsm_path = malloc(path_len);
+  if (!llsm_path) { free(f0_curve); return 1; }
+  
+  snprintf(llsm_path, path_len, "%s", data->input);
   char* ext = strrchr(llsm_path, '.');
-  if (ext) strcpy(ext, ".llsm2");  // Replace extension
-  // Check for existing .llsm2 (ignore .llsm)
+  if (ext) strcpy(ext, ".llsm2");  
+  else strcat(llsm_path, ".llsm2");
+
   FILE* llsm_file = fopen(llsm_path, "rb");
 
   llsm_aoptions* opt_a = llsm_create_aoptions();
@@ -797,23 +796,24 @@ int resample(resampler_data* data) {
   int nfrm = 0;
 
   if (llsm_file) {
-    // File exists — use cached analysis
+    // หากพบไฟล์แคช ดำเนินการโหลดแทนการวิเคราะห์ใหม่
     fclose(llsm_file);
-    printf("Loading cached LLSM analysis: %s\n", llsm_path);
+    printf("[ข้อมูล] กำลังโหลดผลการวิเคราะห์ LLSM จากแคช: %s\n", llsm_path);
     chunk = read_llsm(llsm_path, &nfrm, &fs, &nbit);
     
     if (!chunk) {
-      printf("Failed to read .llsm2 file\n");
+      printf("[ข้อผิดพลาด] ไม่สามารถอ่านไฟล์ .llsm2 ได้\n");
+      free(llsm_path);
       free(f0_curve);
       return 1;
     }
   } else {
-    // No cache — analyze audio
-    printf("Reading input WAV: %s\n", data->input);
+    // กรณีที่ไม่มีไฟล์แคช ดำเนินการวิเคราะห์เสียง (Audio Analysis)
+    printf("[ขั้นตอน] กำลังอ่านไฟล์ WAV ต้นฉบับ: %s\n", data->input);
     input = wavread(data->input, &fs, &nbit, &nx);
-    if (!input) { free(f0_curve); return 1; }
+    if (!input) { free(llsm_path); free(f0_curve); return 1; }
 
-    printf("Estimating F0\n");
+    printf("[ขั้นตอน] กำลังประเมินระดับความถี่ (F0 Estimation)\n");
     pyin_config param = pyin_init(nhop);
     param.fmin = 50.0f;
     param.fmax = 800.0f;
@@ -821,52 +821,48 @@ int resample(resampler_data* data) {
     param.bias = 2;
     param.nf = ceil(fs * 0.025);
     f0 = pyin_analyze(param, input, nx, fs, &nfrm);
-    if (!f0) { free(input); free(f0_curve); return 1; }
+    if (!f0) { free(input); free(llsm_path); free(f0_curve); return 1; }
 
     opt_a->thop = (FP_TYPE)nhop / fs;
     opt_a->f0_refine = 1;
     opt_a->hm_method = LLSM_AOPTION_HMCZT;
 
-    printf("Analysis\n");
+    printf("[ขั้นตอน] กำลังดำเนินการวิเคราะห์เสียง (Audio Analysis)\n");
     chunk = llsm_analyze(opt_a, input, nx, fs, f0, nfrm, NULL);
-    if (!chunk) { free(input); free(f0); free(f0_curve); return 1; }
+    if (!chunk) { free(input); free(f0); free(llsm_path); free(f0_curve); return 1; }
 
-    printf("Saving analysis result to cache: %s\n", llsm_path);
+    printf("[ข้อมูล] กำลังบันทึกผลการวิเคราะห์ลงในแคช: %s\n", llsm_path);
     if (save_llsm(chunk, llsm_path, opt_a, &fs, &nbit) != 0) {
-      printf("Failed to save .llsm2 file.\n");
+      printf("[ข้อผิดพลาด] ไม่สามารถบันทึกไฟล์ .llsm2 ได้\n");
     }
 
     free(input);
     free(f0);
   }
-  printf("Phase sync/stretching\n");
-  // Calculate start and end frames based on offset and cutoff (in ms)
+  printf("[ขั้นตอน] การซิงโครไนซ์เฟสและการยืดขยายเวลา (Phase Sync/Stretching)\n");
+  
+  // คำนวณเฟรมเริ่มต้นและสิ้นสุด
   int start_frame = (int)round((data->offset / 1000.0) * fs / nhop);
   int end_frame;
   if (data->cutoff < 0) {
-      // Negative cutoff: measured from offset
       end_frame = (int)round(((data->offset + fabs(data->cutoff)) / 1000.0) * fs / nhop);
   } else {
-      // Positive cutoff: measured from end of file
       end_frame = nfrm - (int)round((data->cutoff / 1000.0) * fs / nhop);
   }
   if (start_frame < 0) start_frame = 0;
   if (end_frame > nfrm) end_frame = nfrm;
   if (end_frame <= start_frame) end_frame = start_frame + 1;
-
   
-  // Calculate consonant frames (unstretched)
   int consonant_frames = (int)round((data->consonant / 1000.0) * fs / nhop);
   if (consonant_frames > end_frame - start_frame)
       consonant_frames = end_frame - start_frame;
   int sample_frames = end_frame - start_frame;
-  // Calculate total output frames to match data->length (ms)
   int total_frames = (int)round((data->length / 1000.0) * fs / nhop);
   if (total_frames < consonant_frames) total_frames = consonant_frames + 1;
   
   float* f0_array = malloc(sizeof(float) * total_frames);
   if (!f0_array) {
-    // Handle out-of-memory error
+    free(llsm_path);
     free(f0_curve);
     if (chunk) llsm_delete_chunk(chunk);
     if (opt_a) llsm_delete_aoptions(opt_a);
@@ -874,13 +870,17 @@ int resample(resampler_data* data) {
     return 1;
   }
 
-  FP_TYPE* mod_pitch = apply_modulation(interp_pitch_to_pitd(get_pitch_from_area(chunk, start_frame, end_frame), sample_frames, total_frames), data->modulation, total_frames);
+  FP_TYPE* temp_pitch = interp_pitch_to_pitd(get_pitch_from_area(chunk, start_frame, end_frame), sample_frames, total_frames);
+  FP_TYPE* mod_pitch = apply_modulation(temp_pitch, data->modulation, total_frames);
+  free(temp_pitch); // ทำการคืนค่าหน่วยความจำหลังใช้งานเสร็จ
   
   convert_cents_to_hz_offset(f0_curve, pit_len, total_frames, nhop, fs, data->tempo, f0_array);
-  printf("pit_len: %d, total_frames: %d\n", pit_len, total_frames);
+  printf("[ข้อมูล] ความยาวพิทช์ (pit_len): %d, จำนวนเฟรมทั้งหมด: %d\n", pit_len, total_frames);
+  
   for (int i = 0; i < total_frames; ++i) {
     f0_array[i] *= pow(2.0f, (double)flags.t/120);
   }
+  
   llsm_container* conf_new = llsm_copy_container(chunk -> conf);
   llsm_container_attach(conf_new, LLSM_CONF_NFRM,
     llsm_create_int(total_frames), llsm_delete_int, llsm_copy_int);
@@ -888,7 +888,6 @@ int resample(resampler_data* data) {
   llsm_delete_container(conf_new);
   int no_stretch = 0;
   
-  // Copy consonant area directly
   if (total_frames <= sample_frames) {
     for (int i = 0; i < total_frames; i++) {
       chunk_new->frames[i] = llsm_copy_container(chunk->frames[start_frame + i]);
@@ -901,7 +900,8 @@ int resample(resampler_data* data) {
   }
   llsm_chunk_tolayer1(chunk_new, 2048);
   llsm_chunk_phasepropagate(chunk_new, -1);
-  printf("nfrm: %d\n", total_frames);
+  printf("[ข้อมูล] จำนวนเฟรมสุดท้าย (nfrm): %d\n", total_frames);
+  
   int frames_for_velocity = sample_frames;
   if (frames_for_velocity > total_frames)
       frames_for_velocity = total_frames;
@@ -909,20 +909,18 @@ int resample(resampler_data* data) {
   if (data->velocity != 100.0f) {
       apply_velocity(chunk_new, velocity, &consonant_frames, frames_for_velocity);
   }
-  // recalculate if we need to stretch the vowel area
+  
   int vowel_sample_frames = sample_frames - consonant_frames;
   int vowel_total_frames  = total_frames - consonant_frames;
 
   if (vowel_sample_frames <= 0 || vowel_total_frames <= 0 || vowel_sample_frames >= vowel_total_frames) {
     no_stretch = 1;
-} else {
+  } else {
     no_stretch = 0;
-}
-  // Loop the vowel area instead of stretching
+  }
+  
   if (no_stretch == 0) {
-    // Only stretch the vowel area (after consonant_frames)
     for (int i = consonant_frames; i < total_frames; i++) {
-      // Map output frame i to input frame in the vowel area
       FP_TYPE mapped = (FP_TYPE)(i - consonant_frames) * vowel_sample_frames / vowel_total_frames;
       int base = consonant_frames + (int)mapped;
       FP_TYPE ratio = mapped - (int)mapped;
@@ -940,7 +938,8 @@ int resample(resampler_data* data) {
       }
     }
   }
-  // Set all f0 to target tone
+  
+  // กำหนดระดับเสียงไปตามโน้ตเป้าหมาย
   for(int i = 0; i < total_frames; i ++) {
     llsm_container_attach(chunk_new->frames[i], LLSM_FRAME_HM, NULL, NULL, NULL);
     FP_TYPE* f0_i = llsm_container_get(chunk_new->frames[i], LLSM_FRAME_F0);
@@ -952,9 +951,9 @@ int resample(resampler_data* data) {
     else {
       f0_i[0] = data->tone * (1.0 + f0_array[i]);
       f0_i[0] += mod_pitch[i];
-      if (f0_i[0] < 20.0f && f0_i[0] != 0.0f) f0_i[0] = 20.0f; // minimum F0
+      if (f0_i[0] < 20.0f && f0_i[0] != 0.0f) f0_i[0] = 20.0f; // รักษาค่า F0 ขั้นต่ำ
     }
-    // Compensate for the amplitude gain.
+    // ชดเชยการสูญเสียระดับเสียง (Amplitude Gain)
     FP_TYPE* vt_magn = llsm_container_get(chunk_new->frames[i],
       LLSM_FRAME_VTMAGN);
     if(vt_magn != NULL) {
@@ -962,22 +961,26 @@ int resample(resampler_data* data) {
       for(int j = 0; j < nspec; j ++)
         vt_magn[j] -= 20.0 * log10(f0_i[0] / old_f0);
     }
-    
   }
 
   llsm_chunk_phasepropagate(chunk_new, 1);
   llsm_chunk_tolayer0(chunk_new);
-  apply_tension(chunk_new, flags.Mt); // apply tension based on Mt flag
-  printf("Synthesis\n");
+  apply_tension(chunk_new, flags.Mt); 
+  printf("[ขั้นตอน] กำลังดำเนินการสังเคราะห์เสียง (Synthesis)\n");
   
   llsm_output* out = llsm_synthesize(opt_s, chunk_new);
 
   if (!out || !out->y) {
-      printf("Failed to synthesize output: %d\n", out);
+      printf("[ข้อผิดพลาด] การสังเคราะห์ล้มเหลว (Synthesis Failed)\n");
+      // จัดการคืนค่าหน่วยความจำกรณีล้มเหลว
+      free(f0_array);
+      free(mod_pitch);
+      free(llsm_path);
+      free(f0_curve);
       return 1;
   }
 
-  normalize_waveform(out->y, out->ny, 0.60f, flags.P); // apply P flag normalization
+  normalize_waveform(out->y, out->ny, 0.60f, flags.P); 
 
   float scale = data->volume / 100.0f;
   for (int i = 0; i < out->ny; ++i)
@@ -985,43 +988,48 @@ int resample(resampler_data* data) {
   
   wavwrite(out->y, out->ny, fs, nbit, data->output);
   
-
+  // จัดการทำความสะอาดและคืนพื้นที่หน่วยความจำ
   llsm_delete_output(out);
   llsm_delete_chunk(chunk);
   llsm_delete_chunk(chunk_new);
   llsm_delete_aoptions(opt_a);
   llsm_delete_soptions(opt_s);
+  free(f0_array);
+  free(mod_pitch);
+  free(llsm_path);
   free(f0_curve);
+  
+  printf("[สำเร็จ] การประมวลผลเสร็จสิ้น\n");
   return 0;
 }
 
 int main(int argc, char* argv[]) {
-    printf("moresampler2 version %s\n", version);
-    if (argc == 2) { // user dragged and dropped a folder into the executable
-        printf("At the moment, autolabeling is not supported.\n");
+    printf("Moresampler2 เวอร์ชัน %s\n", version);
+    if (argc == 2) { 
+        printf("[ระบบ] ขณะนี้ยังไม่รองรับระบบการสร้างฉลากอัตโนมัติ (Autolabeling)\n");
         return 0;
     }
     if (argc < 2) {
-        printf("Moresampler is meant to be used inside of UTAU or OpenUtau.\n");
+        printf("[ข้อผิดพลาด] Moresampler ถูกออกแบบมาเพื่อใช้งานภายใน UTAU หรือ OpenUtau เท่านั้น\n");
         return 1;
     }
-    if (argc == 14) { // user wants the resampler mode
+    if (argc == 14) { // เข้าสู่โหมด Resampler ตามพารามิเตอร์ของ UTAU
         resampler_data data;
         data.input = argv[1];
         data.output = argv[2];
-        data.tone = note_to_frequency(argv[3]); // note is passed as a string (A4), so we need to convert it
+        data.tone = note_to_frequency(argv[3]); 
         data.velocity = atof(argv[4]);
-        data.flags = argv[5]; // flags are passed as a string, e.g. "Mt50"
+        data.flags = argv[5]; 
         data.offset = atof(argv[6]);
         data.length = atof(argv[7]);
         data.consonant = atof(argv[8]);
         data.cutoff = atof(argv[9]);
         data.volume = atoi(argv[10]);
         data.modulation = atoi(argv[11]);
-        data.tempo = parse_tempo(argv[12]); //since tempo has a special format, we need to parse it
-        data.pitch_curve = argv[13]; // pitch curve data as a string
+        data.tempo = parse_tempo(argv[12]); 
+        data.pitch_curve = argv[13]; 
         return resample(&data);
     }
-    printf("Invalid arguments. Expected 14 arguments, got %d.\n", argc);
+    printf("[ข้อผิดพลาด] พารามิเตอร์ไม่ถูกต้อง คาดหวังการรับค่า 14 ส่วน แต่ได้รับมา %d ส่วน\n", argc);
     return 0;
 }
